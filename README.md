@@ -75,3 +75,45 @@ Output directory:
 - Split sample counts match config ratios (approximately, due to integer rounding)
 - Every split contains all classes
 - Scaler is fit on `base_train` only
+
+### 6) Step 1: Train base model (MLP)
+
+Run:
+
+```bash
+cd /home/admin1/Desktop/easrc
+source .venv/bin/activate
+python3 easrc_uci/scripts/train_base.py \
+  --config easrc_uci/configs/uci_rnaseq.yaml \
+  --seed 0 \
+  --base_model mlp
+```
+
+Expected output directory:
+
+- `easrc_uci/results/uci_rnaseq/seed_0/base/mlp/`
+  - `model.pt`
+  - `train_log.csv`
+  - `predictions.csv`
+
+### 7) Step 2: Compute explanation + proxy-bio features
+
+Run:
+
+```bash
+cd /home/admin1/Desktop/easrc
+source .venv/bin/activate
+python3 easrc_uci/scripts/compute_features.py \
+  --config easrc_uci/configs/uci_rnaseq.yaml \
+  --seed 0 \
+  --base_model mlp
+```
+
+Expected output directory:
+
+- `easrc_uci/results/uci_rnaseq/seed_0/features/mlp/`
+  - `attribution_features.csv`
+  - `proxy_bio_features.csv`
+  - `all_features.csv`
+  - `attributions_pred_class.npy`
+  - `proxy_groups.json`
