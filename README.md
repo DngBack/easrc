@@ -141,3 +141,48 @@ Expected output directory:
   - `rejector_train_logs.csv`
   - `metadata.json`
   - `rejectors/<Method>/model.pt` and `rejectors/<Method>/scaler.joblib` for each learned method
+
+### 9) Step 4: Calibrate thresholds + test evaluation
+
+Uses `method_scores.csv` and `all_features_with_targets.csv` from step 3. For each method, sweeps thresholds on the **calibration** split, picks the feasible threshold with largest empirical coverage (under UCB or empirical rules), then reports metrics on **test**.
+
+Run (config defaults: `use_ucb: true`, `alpha` / `beta` from YAML):
+
+```bash
+cd /home/admin1/Desktop/easrc
+source .venv/bin/activate
+python3 easrc_uci/scripts/calibrate_eval.py \
+  --config easrc_uci/configs/uci_rnaseq.yaml \
+  --seed 0 \
+  --base_model mlp
+```
+
+**UCI smoke-test note:** With ~160 calibration points and `xai_unreliability` near **0.55**, `beta: 0.30` is often **never** satisfied on the calibration mean `xai_loss`. Strong UCB at `alpha: 0.05` can also make every method infeasible. For a runnable demo, use empirical feasibility and a slightly looser `beta`:
+
+```bash
+python3 easrc_uci/scripts/calibrate_eval.py \
+  --config easrc_uci/configs/uci_rnaseq.yaml \
+  --seed 0 \
+  --base_model mlp \
+  --no-ucb \
+  --beta 0.58
+```
+
+Expected output directory:
+
+- `easrc_uci/results/uci_rnaseq/seed_0/eval/mlp/`
+  - `calibration_results.csv`
+  - `test_metrics.csv`
+  - `accepted_samples.csv`
+  - `metadata.json`
+
+Quick sanity check:
+
+```bash
+python3 - << 'PY'
+import pandas as pd
+path = "easrc_uci/results/uci_rnaseq/seed_0/eval/mlp/test_metrics.csv"
+df = pd.read_csv(path)
+print(df[["method", "feasible", "threshold", "test_coverage", "test_cls_risk", "test_xai_risk", "violate_cls", "violate_xai"]])
+PY
+```
