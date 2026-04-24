@@ -117,3 +117,27 @@ Expected output directory:
   - `all_features.csv`
   - `attributions_pred_class.npy`
   - `proxy_groups.json`
+
+### 8) Step 3: Train rejectors + score baselines
+
+Requires `all_features.csv` from step 2. Builds accept targets on `rejector_train` using `target_gamma` and trains MLP rejectors for `ConfOnly`, `XAIOnly`, `BioOnlyProxy`, `EASRCFullProxy`. Also writes non-trained baselines (`NoReject`, `MaxProb`, `Entropy`, `Margin`, `Energy`).
+
+Run:
+
+```bash
+cd /home/admin1/Desktop/easrc
+source .venv/bin/activate
+python3 easrc_uci/scripts/train_rejectors.py \
+  --config easrc_uci/configs/uci_rnaseq.yaml \
+  --seed 0 \
+  --base_model mlp
+```
+
+Expected output directory:
+
+- `easrc_uci/results/uci_rnaseq/seed_0/scores/mlp/`
+  - `method_scores.csv`
+  - `all_features_with_targets.csv`
+  - `rejector_train_logs.csv`
+  - `metadata.json`
+  - `rejectors/<Method>/model.pt` and `rejectors/<Method>/scaler.joblib` for each learned method
