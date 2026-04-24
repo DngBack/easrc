@@ -1,0 +1,77 @@
+project:
+  name: easrc_uci
+  seed: 0
+
+dataset:
+  name: uci_rnaseq
+  raw_dir: data/uci_rnaseq/raw
+  processed_dir: data/uci_rnaseq/processed
+  results_dir: results/uci_rnaseq
+
+split:
+  base_train: 0.40
+  rejector_train: 0.20
+  calibration: 0.20
+  test: 0.20
+  stratify: true
+
+preprocess:
+  standardize: true
+  low_variance_filter: false
+  top_variance_features: null
+
+base_model:
+  type: mlp
+  hidden_dims: [512, 128]
+  dropout: 0.20
+  lr: 0.001
+  weight_decay: 0.0001
+  batch_size: 64
+  epochs: 100
+  patience: 15
+
+explain:
+  method: grad_input
+  perturb_std: 0.01
+  stability_repeats: 5
+  topk_mass: 100
+  xai_weights:
+    attr_entropy: 0.4
+    attr_instability: 0.4
+    inverse_topk_mass: 0.2
+
+proxy_bio:
+  enabled: true
+  topk_per_class: 200
+  random_groups: 10
+
+rejector:
+  hidden_dims: [64, 32]
+  dropout: 0.10
+  lr: 0.001
+  weight_decay: 0.0001
+  batch_size: 64
+  epochs: 100
+  patience: 15
+  target_gamma: 0.30
+
+calibration:
+  alpha: 0.05
+  beta: 0.30
+  delta: 0.10
+  n_thresholds: 200
+  min_empirical_coverage: 0.05
+  use_ucb: true
+
+methods:
+  - NoReject
+  - MaxProb
+  - Entropy
+  - Margin
+  - Energy
+  - ConfOnly
+  - XAIOnly
+  - BioOnlyProxy
+  - EASRCFullProxy
+
+seeds: [0, 1, 2, 3, 4]
