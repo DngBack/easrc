@@ -15,13 +15,14 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from src.data.load_tcga import load_tcga_rnaseq
 from src.data.load_uci import load_uci_rnaseq
 from src.data.preprocess import fit_and_transform_splits
 from src.data.split import SplitConfig, make_splits
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Prepare UCI RNA-seq data and save processed artifacts.")
+    parser = argparse.ArgumentParser(description="Prepare RNA-seq matrices and save processed artifacts.")
     parser.add_argument("--config", type=str, required=True, help="Path to YAML config file.")
     parser.add_argument("--seed", type=int, default=None, help="Override seed from config.")
     return parser.parse_args()
@@ -61,7 +62,15 @@ def main() -> None:
     out_dir = processed_root / f"seed_{seed}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    X, y_raw, sample_ids, feature_names = load_uci_rnaseq(raw_dir=raw_dir, dataset_name=cfg["dataset"]["name"])
+    loader = str(cfg["dataset"].get("loader", "uci")).lower()
+    if loader == "uci":
+        X, y_raw, sample_ids, feature_names = load_uci_rnaseq(
+            raw_dir=raw_dir, dataset_name=cfg["dataset"]["name"]
+        )
+    elif loader == "tcga":
+        X, y_raw, sample_ids, feature_names = load_tcga_rnaseq(raw_dir=raw_dir)
+    else:
+        raise ValueError(f"Unknown dataset.loader: {loader!r}. Use 'uci' or 'tcga'.")
 
     label_encoder = LabelEncoder()
     y = label_encoder.fit_transform(y_raw).astype(np.int64)

@@ -19,6 +19,15 @@ from src.explain.explanation_features import (
     xai_unreliability_score,
 )
 from src.explain.grad_input import gradient_times_input, gradient_times_input_stability
+from src.explain.pathway_alignment import (
+    attribution_mass_in_predicted_pathway,
+    build_class_pathway_groups,
+    feature_name_to_index,
+    load_gmt,
+    make_random_groups_matched_size,
+    pathway_groups_to_jsonable,
+    random_pathway_control_alignment,
+)
 from src.explain.proxy_bio import (
     attribution_mass_in_predicted_group,
     build_proxy_groups,
@@ -118,7 +127,7 @@ def main() -> None:
     processed_root = PROJECT_ROOT / dataset_cfg["processed_dir"]
     results_root = PROJECT_ROOT / dataset_cfg["results_dir"]
 
-    X, y, sample_ids, splits, class_names, _ = load_processed(
+    X, y, sample_ids, splits, class_names, feature_names = load_processed(
         processed_root=processed_root,
         seed=args.seed,
     )
@@ -191,7 +200,7 @@ def main() -> None:
         }
     )
 
-    print("Building proxy-bio groups from rejector_train only...")
+    bio_mode = str(proxy_cfg.get("mode", "proxy")).lower()
     rejector_train_indices = np.array(splits["rejector_train"], dtype=int)
 
     num_classes = len(class_names)
@@ -199,34 +208,78 @@ def main() -> None:
     topk_per_class = int(proxy_cfg.get("topk_per_class", 200))
     n_random_groups = int(proxy_cfg.get("random_groups", 10))
 
-    proxy_groups = build_proxy_groups(
-        X=X,
-        y=y,
-        rejector_train_indices=rejector_train_indices,
-        num_classes=num_classes,
-        topk_per_class=topk_per_class,
-    )
+    if bio_mode == "pathway":
+        print("Building pathway gene groups from GMT + class_pathways (not from rejector labels)...")
+        gmt_rel = proxy_cfg.get("gmt_path")
+        if not gmt_rel:
+            raise ValueError("proxy_bio.mode='pathway' requires proxy_bio.gmt_path (MSigDB .gmt file).")
+        gmt_path = (PROJECT_ROOT / str(gmt_rel)).resolve()
+        class_pathways = proxy_cfg.get("class_pathways") or {}
+        if not class_pathways:
+            raise ValueError(
+                "proxy_bio.mode='pathway' requires proxy_bio.class_pathways "
+                "(map class label string -> list of GMT pathway names)."
+            )
+        pathway_defs = load_gmt(gmt_path)
+        gene_to_idx = feature_name_to_index(list(feature_names))
+        class_pathways_norm = {str(k): [str(p) for p in v] for k, v in class_pathways.items()}
+        proxy_groups = build_class_pathway_groups(
+            class_names=list(class_names),
+            class_pathways=class_pathways_norm,
+            pathway_defs=pathway_defs,
+            gene_to_idx=gene_to_idx,
+        )
+        target_sizes = {c: int(proxy_groups[c].size) for c in range(num_classes)}
+        random_groups = make_random_groups_matched_size(
+            num_classes=num_classes,
+            num_features=num_features,
+            target_sizes=target_sizes,
+            n_random_groups=n_random_groups,
+            seed=args.seed,
+        )
+        print("Computing pathway attribution alignment (predicted class)...")
+        proxy_alignment = attribution_mass_in_predicted_pathway(
+            attributions=attributions,
+            predicted_classes=y_pred,
+            groups=proxy_groups,
+        )
+        random_alignment = random_pathway_control_alignment(
+            attributions=attributions,
+            predicted_classes=y_pred,
+            random_groups=random_groups,
+        )
+    elif bio_mode == "proxy":
+        print("Building proxy-bio groups from rejector_train only...")
+        proxy_groups = build_proxy_groups(
+            X=X,
+            y=y,
+            rejector_train_indices=rejector_train_indices,
+            num_classes=num_classes,
+            topk_per_class=topk_per_class,
+        )
 
-    random_groups = make_random_groups(
-        num_classes=num_classes,
-        num_features=num_features,
-        group_size=min(topk_per_class, num_features),
-        n_random_groups=n_random_groups,
-        seed=args.seed,
-    )
+        random_groups = make_random_groups(
+            num_classes=num_classes,
+            num_features=num_features,
+            group_size=min(topk_per_class, num_features),
+            n_random_groups=n_random_groups,
+            seed=args.seed,
+        )
 
-    print("Computing proxy-bio alignment...")
-    proxy_alignment = attribution_mass_in_predicted_group(
-        attributions=attributions,
-        predicted_classes=y_pred,
-        groups=proxy_groups,
-    )
+        print("Computing proxy-bio alignment...")
+        proxy_alignment = attribution_mass_in_predicted_group(
+            attributions=attributions,
+            predicted_classes=y_pred,
+            groups=proxy_groups,
+        )
 
-    random_alignment = random_group_alignment(
-        attributions=attributions,
-        predicted_classes=y_pred,
-        random_groups=random_groups,
-    )
+        random_alignment = random_group_alignment(
+            attributions=attributions,
+            predicted_classes=y_pred,
+            random_groups=random_groups,
+        )
+    else:
+        raise ValueError(f"Unknown proxy_bio.mode: {bio_mode!r}. Use 'proxy' or 'pathway'.")
 
     proxy_bio_unrel = 1.0 - proxy_alignment
     proxy_gap = proxy_alignment - random_alignment
@@ -299,7 +352,14 @@ def main() -> None:
     proxy_features.to_csv(out_dir / "proxy_bio_features.csv", index=False)
     all_features.to_csv(out_dir / "all_features.csv", index=False)
 
-    save_proxy_groups(proxy_groups, out_dir / "proxy_groups.json")
+    if bio_mode == "pathway":
+        groups_payload = pathway_groups_to_jsonable(
+            proxy_groups, list(class_names), list(feature_names)
+        )
+        with (out_dir / "proxy_groups.json").open("w", encoding="utf-8") as f:
+            json.dump(groups_payload, f, indent=2)
+    else:
+        save_proxy_groups(proxy_groups, out_dir / "proxy_groups.json")
 
     print(f"Features saved to: {out_dir}")
     print("Feature summary:")

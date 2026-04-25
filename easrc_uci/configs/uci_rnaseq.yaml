@@ -4,6 +4,7 @@ project:
 
 dataset:
   name: uci_rnaseq
+  loader: uci
   raw_dir: data/uci_rnaseq/raw
   processed_dir: data/uci_rnaseq/processed
   results_dir: results/uci_rnaseq
@@ -42,6 +43,7 @@ explain:
 
 proxy_bio:
   enabled: true
+  mode: proxy
   topk_per_class: 200
   random_groups: 10
 

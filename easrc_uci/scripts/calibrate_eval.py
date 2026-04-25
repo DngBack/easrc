@@ -49,6 +49,18 @@ def main() -> None:
         default=None,
         help="Override calibration.beta from config.",
     )
+    parser.add_argument(
+        "--scores-dir",
+        type=str,
+        default=None,
+        help="Directory with method_scores.csv and all_features_with_targets.csv (default: results/.../scores/<base_model>).",
+    )
+    parser.add_argument(
+        "--out-dir",
+        type=str,
+        default=None,
+        help="Directory for eval outputs (default: results/.../eval/<base_model>).",
+    )
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -63,7 +75,10 @@ def main() -> None:
     min_cov = float(cal_cfg.get("min_empirical_coverage", 0.05))
 
     results_root = PROJECT_ROOT / dataset_cfg["results_dir"]
-    scores_dir = results_root / f"seed_{args.seed}" / "scores" / args.base_model
+    if args.scores_dir:
+        scores_dir = Path(args.scores_dir)
+    else:
+        scores_dir = results_root / f"seed_{args.seed}" / "scores" / args.base_model
     method_scores_path = scores_dir / "method_scores.csv"
     targets_path = scores_dir / "all_features_with_targets.csv"
 
@@ -94,6 +109,15 @@ def main() -> None:
         how="inner",
         validate="many_to_one",
     )
+
+    calib_one = merged[merged["split"] == "calibration"].drop_duplicates(subset=["sample_id"])
+    cal_diag = {
+        "n_calibration_samples": int(len(calib_one)),
+        "xai_loss_min": float(calib_one["xai_loss"].min()),
+        "xai_loss_max": float(calib_one["xai_loss"].max()),
+        "xai_loss_mean": float(calib_one["xai_loss"].mean()),
+        "cls_loss_mean": float(calib_one["cls_loss"].mean()),
+    }
 
     calib_rows_out: list[dict] = []
     test_rows_out: list[dict] = []
@@ -202,7 +226,10 @@ def main() -> None:
         )
         accepted_frames.append(acc_df)
 
-    out_dir = ensure_dir(results_root / f"seed_{args.seed}" / "eval" / args.base_model)
+    if args.out_dir:
+        out_dir = ensure_dir(Path(args.out_dir))
+    else:
+        out_dir = ensure_dir(results_root / f"seed_{args.seed}" / "eval" / args.base_model)
 
     calib_df = pd.DataFrame(calib_rows_out)
     cal_cols = [
@@ -219,7 +246,7 @@ def main() -> None:
         "n_accepted_cal",
     ]
     calib_df = calib_df[[c for c in cal_cols if c in calib_df.columns]]
-    calib_df.to_csv(out_dir / "calibration_results.csv", index=False)
+    calib_df.to_csv(out_dir / "calibration_results.csv", index=False, na_rep="NA")
 
     test_df_out = pd.DataFrame(test_rows_out)
     test_cols = [
@@ -240,7 +267,7 @@ def main() -> None:
         "n_accepted_test",
     ]
     test_df_out = test_df_out[[c for c in test_cols if c in test_df_out.columns]]
-    test_df_out.to_csv(out_dir / "test_metrics.csv", index=False)
+    test_df_out.to_csv(out_dir / "test_metrics.csv", index=False, na_rep="NA")
 
     accepted_all = pd.concat(accepted_frames, axis=0, ignore_index=True)
     accepted_all.to_csv(out_dir / "accepted_samples.csv", index=False)
@@ -257,6 +284,12 @@ def main() -> None:
         "cli_no_ucb": bool(args.no_ucb),
         "alpha_from_config": args.alpha is None,
         "beta_from_config": args.beta is None,
+        "calibration_diagnostics": cal_diag,
+        "infeasible_hint": (
+            "If all methods infeasible: (1) raise beta above calibration xai_loss mean; "
+            "(2) try use_ucb: false or larger calibration split; "
+            "(3) see calibration_diagnostics in this file."
+        ),
     }
     with open(out_dir / "metadata.json", "w", encoding="utf-8") as f:
         json.dump(meta, f, indent=2)

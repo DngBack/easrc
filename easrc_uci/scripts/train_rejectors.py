@@ -230,6 +230,30 @@ def main() -> None:
     parser.add_argument("--config", type=str, required=True)
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--base_model", type=str, default="mlp")
+    parser.add_argument(
+        "--target-gamma",
+        type=float,
+        default=None,
+        help="Override rejector.target_gamma from config.",
+    )
+    parser.add_argument(
+        "--cls-weight",
+        type=float,
+        default=None,
+        help="Override rejector.cls_weight (default 0.5).",
+    )
+    parser.add_argument(
+        "--xai-weight",
+        type=float,
+        default=None,
+        help="Override rejector.xai_weight (default 0.5).",
+    )
+    parser.add_argument(
+        "--out-dir",
+        type=str,
+        default=None,
+        help="Directory for scores CSVs/metadata (default: results/.../scores/<base_model>).",
+    )
     args = parser.parse_args()
 
     set_seed(args.seed)
@@ -250,14 +274,25 @@ def main() -> None:
             f"Run compute_features.py first."
         )
 
-    out_dir = ensure_dir(results_root / f"seed_{args.seed}" / "scores" / args.base_model)
+    if args.out_dir:
+        out_dir = ensure_dir(Path(args.out_dir))
+    else:
+        out_dir = ensure_dir(results_root / f"seed_{args.seed}" / "scores" / args.base_model)
 
     df = pd.read_csv(all_features_path)
 
-    gamma = float(rejector_cfg.get("target_gamma", 0.30))
+    gamma = float(
+        args.target_gamma
+        if args.target_gamma is not None
+        else rejector_cfg.get("target_gamma", 0.30)
+    )
 
-    cls_weight = float(rejector_cfg.get("cls_weight", 0.5))
-    xai_weight = float(rejector_cfg.get("xai_weight", 0.5))
+    cls_weight = float(
+        args.cls_weight if args.cls_weight is not None else rejector_cfg.get("cls_weight", 0.5)
+    )
+    xai_weight = float(
+        args.xai_weight if args.xai_weight is not None else rejector_cfg.get("xai_weight", 0.5)
+    )
 
     df = compute_training_targets(
         df=df,

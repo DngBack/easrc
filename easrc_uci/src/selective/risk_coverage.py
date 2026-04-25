@@ -129,4 +129,15 @@ def area_under_risk_coverage(
     coverages = k / n
     coverages = np.concatenate([[0.0], coverages])
     risks = np.concatenate([[0.0], risks])
-    return float(np.trapezoid(risks, coverages))
+    return float(_trapezoid_compat(risks, coverages))
+
+
+def _trapezoid_compat(y: np.ndarray, x: np.ndarray) -> float:
+    """NumPy 2.0+: trapezoid; older: trapz; else manual trapezoid rule."""
+    if hasattr(np, "trapezoid"):
+        return float(np.trapezoid(y, x))
+    if hasattr(np, "trapz"):
+        return float(np.trapz(y, x))  # type: ignore[attr-defined]
+    dx = np.diff(x)
+    seg = 0.5 * (y[1:] + y[:-1]) * dx
+    return float(np.sum(seg))
